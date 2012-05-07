@@ -118,11 +118,17 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'linkedin',
     # Uncomment the next line to enable the admin:
     # 'django.contrib.admin',
     # Uncomment the next line to enable admin documentation:
     # 'django.contrib.admindocs',
 )
+
+AUTH_PROFILE_MODULE= 'linkedin.UserProfile'
+LINKEDIN_TOKEN='95kz94r5iq24'
+LINKEDIN_SECRET='4fxieVHKeG1evEsr'
+LOGIN_URL='/login/'
 
 # A sample logging configuration. The only tangible logging
 # performed by this configuration is to send an email to

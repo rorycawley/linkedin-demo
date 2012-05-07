@@ -5,13 +5,9 @@ from django.conf.urls import patterns, include, url
 # admin.autodiscover()
 
 urlpatterns = patterns('',
-    # Examples:
-    # url(r'^$', 'hellodjango1.views.home', name='home'),
-    # url(r'^hellodjango1/', include('hellodjango1.foo.urls')),
-
-    # Uncomment the admin/doc line below to enable admin documentation:
-    # url(r'^admin/doc/', include('django.contrib.admindocs.urls')),
-
-    # Uncomment the next line to enable the admin:
-    # url(r'^admin/', include(admin.site.urls)),
+    url(r'^login/?$', 'linkedin.views.oauth_login'),
+    url(r'^logout/?$', 'linkedin.views.oauth_logout'),
+    url(r'^login/authenticated/?$', 'linkedin.views.oauth_authenticated'),
+    url(r'^$','linkedin.views.home'),
 )
+
