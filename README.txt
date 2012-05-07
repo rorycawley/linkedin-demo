@@ -18,5 +18,10 @@ Then each person in the list is checked to see if they work in or have every wor
 If we have a match then that person gets added to the list and the URL to their linkedin profile is added to the email.
 If there is more than 0 persons found to have worked in one of the companies then the email is constructed and sent to the email address of the user
 
-
+1. Get the id of a company.
+2. Get the list of people in the users network
+3. For each person, get the list of companies they worked for and see if they work for now or in the past the same company id
+How it's developed
+Eclipse with PyDev
+https://apigee.com/console/linkedin
 
