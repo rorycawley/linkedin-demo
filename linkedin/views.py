@@ -5,6 +5,7 @@ import cgi
 import simplejson as json
 import datetime
 import re
+
 # Django
 from django.http import HttpResponse
 from django.shortcuts import render_to_response
@@ -13,14 +14,18 @@ from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
+
 # Project
 from linkedin.models import UserProfile
+
 # from settings.py
 consumer = oauth.Consumer(settings.LINKEDIN_TOKEN, settings.LINKEDIN_SECRET)
 client = oauth.Client(consumer)
+
 request_token_url = 'https://api.linkedin.com/uas/oauth/requestToken'
 access_token_url = 'https://api.linkedin.com/uas/oauth/accessToken'
 authenticate_url = 'https://www.linkedin.com/uas/oauth/authenticate'
+headers = {'x-li-format':'json'}
 
 # /login
 def oauth_login(request):
@@ -44,26 +49,38 @@ def oauth_login(request):
     print url
     return HttpResponseRedirect(url)
 
-
+# NB: This doesn't below in the web app
+# this would be in a scheduled job running daily
+# with the and an LinkedIn email would be sent at the end
+#
 # Provide the list of people who have worked in a given companay
-# Input id of id of company, arrayOfPeopleIds
-# Output list of names of people who have been in that company
-# ID: 30591 Name: Adaptive Mobile
-# ID: 22637 Name: Information Mosaic
-# ID: 1337 Name: LinkedIn
-def peopleWhoWorkedAtACompany(client, companyId, arrayOfPeopleIds):
-    arrayOfConnections = []
-    for connectionIndex in range(len(arrayOfPeopleIds)):
-        userID = arrayOfPeopleIds[connectionIndex]
+def getPeopleWhoWorkedAtACompany(client,companyId, userId):    
+    # Get the list of IDs of the user's connections
+    url = "http://api.linkedin.com/v1/people/~/connections:(id,first-name,last-name)"
+    resp, content = client.request(url, "GET", headers=headers)
+    arrayOfConnectionIds = []
+    if resp['status'] != '200':
+        return [] # can't get anything back
+    else: 
+        profile = json.loads(content)
+        listOfProfiles = profile['values']
+        if profile['_total'] > 0:
+            for i in range(len(listOfProfiles)):
+                aConnection = listOfProfiles[i]
+                aConnectionId = str(aConnection['id'])
+                arrayOfConnectionIds.append(aConnectionId)
+                
+    # For each connection, get the list of positions and see if any match the company
+    arrayOfConnectionsWhoWorkedForCompany = []
+    
+    for connectionIndex in range(len(arrayOfConnectionIds)):
+        personUserID = arrayOfConnectionIds[connectionIndex]
    
-        # LIST OUT THE POSITIONS SOMEONE WORKED FOR
-        url = "http://api.linkedin.com/v1/people/id=" + userID + ":(positions)"
-        headers = {'x-li-format':'json'}
+        url = "http://api.linkedin.com/v1/people/id=" + personUserID + ":(positions)"
         resp, content = client.request(url, "GET", headers=headers)
 
         if resp['status'] != '200':
-            print resp['status']
-            continue
+            continue # problem getting the list of connections (throttleing or connection errror)
         else: 
             profile = json.loads(content)
             positions = profile['positions']
@@ -72,17 +89,32 @@ def peopleWhoWorkedAtACompany(client, companyId, arrayOfPeopleIds):
                 for positionIndex in range(len(listOfPositions)):
                     aPosition = listOfPositions[positionIndex]
                     companyOfPosition = aPosition['company']
-                    if companyOfPosition.has_key('id'): # SOME DON'T!!!
+                    if companyOfPosition.has_key('id'): # SOME DON'T since they were gone pre-Linkedin or not registered
                         companyOfPositionId = companyOfPosition['id']
                         companyName = companyOfPosition['name']
-                        if companyId == companyOfPositionId:
-                            arrayOfConnections.append(userID)
-                            break
-                        
-    print "Foo"
-    return arrayOfConnections
+                        if companyId == companyOfPositionId: # the comapny id's match so great
+                            arrayOfConnectionsWhoWorkedForCompany.append(personUserID) # Add this user since they work(d) in the company
+                            break # found a position that matches this person to the company, done it!
+    return arrayOfConnectionsWhoWorkedForCompany
 
-
+def outputPeopleWhoHaveWorkedAtACompany(client, companyName, companyId, userId):
+    html = '<h1>People in my network who have worked at ' + companyName + '</h1>'
+    
+    listOfPeopleWhoWorkedInCompany = getPeopleWhoWorkedAtACompany(client,companyId, userId)
+    if len(listOfPeopleWhoWorkedInCompany) == 0:
+        html += 'No one in my network has worked in ' + companyName
+    else:
+        for i in range(len(listOfPeopleWhoWorkedInCompany)):
+            url = "http://api.linkedin.com/v1/people/id=" + str(listOfPeopleWhoWorkedInCompany[i]) + ":(first-name,last-name)"
+            resp, content = client.request(url, "GET", headers=headers)
+            if resp['status'] != '200':
+                html += 'person not authenticated'
+            else: 
+                profile = json.loads(content)
+                html += "<br> Name: " + profile['firstName'] + " " + profile['lastName']
+                # I could use the Communications API to inmail them automatically here
+                
+    return html
 
 # / (requires login)
 @login_required
@@ -90,7 +122,6 @@ def home(request):
     html = "<html><body>"
     token = oauth.Token(request.user.get_profile().oauth_token,request.user.get_profile().oauth_secret)
     client = oauth.Client(consumer,token)
-    headers = {'x-li-format':'json'}
     
     # https://developer.linkedin.com/documents/linkedin-api-resource-map
     url = "http://api.linkedin.com/v1/people/~/connections"
@@ -104,40 +135,19 @@ def home(request):
     else: 
         profile = json.loads(content)
         html += "ID: " + str(profile['id']) + "<br> Name: " + profile['firstName'] + " " + profile['lastName']
-    userID = str(profile['id'])
-    
-    # Get the list of IDs of the user's connections
-    url = "http://api.linkedin.com/v1/people/~/connections:(id,first-name,last-name)"
-    resp, content = client.request(url, "GET", headers=headers)
-    arrayOfConnections = []
-    html += '<h1>IDs of the connections of the logged in user</h1>'
-    if resp['status'] != '200':
-        html += 'person not authenticated'
-    else: 
-        profile = json.loads(content)
-        listOfProfiles = profile['values']
-        if profile['_total'] > 0:
-            for i in range(len(listOfProfiles)):
-                aConnection = listOfProfiles[i]
-                aConnectionId = str(aConnection['id'])
-                arrayOfConnections.append(aConnectionId)
+    userId = str(profile['id']) # This is the userId of the LinkedIn authenticated user
+                
 
-    
-    html += '<h1>List of people who have worked at Fidelity</h1>'
-    listOfPeople = peopleWhoWorkedAtACompany(client, 1307, arrayOfConnections)    # Fidelity
-    for i in range(len(listOfPeople)):
-        url = "http://api.linkedin.com/v1/people/id=" + str(listOfPeople[i]) + ":(first-name,last-name)"
-        resp, content = client.request(url, "GET", headers=headers)
-        if resp['status'] != '200':
-            html += 'person not authenticated'
-        else: 
-            profile = json.loads(content)
-            html += "<br> Name: " + profile['firstName'] + " " + profile['lastName']
-            
-    #listOfPeople = peopleWhoWorkedAtACompany(client, 30591, arrayOfConnections)    # Adaptive Mobile
-    #listOfPeople = peopleWhoWorkedAtACompany(client, 22637, arrayOfConnections)    # Information Mosaic
-    #listOfPeople = peopleWhoWorkedAtACompany(client, 1337, arrayOfConnections)    # LinkedIn
-    
+
+    # Let's list out the people who are in the network
+    FIDELITY_ID = 1307
+    INFORMATIONMOSAIC_ID = 22637
+    ADAPTIVEMOBILE_ID = 30591
+    html += outputPeopleWhoHaveWorkedAtACompany(client, 'FIDELITY', FIDELITY_ID, userId)
+    html += outputPeopleWhoHaveWorkedAtACompany(client, 'INFORMATIONMOSAIC', INFORMATIONMOSAIC_ID, userId)
+    html += outputPeopleWhoHaveWorkedAtACompany(client, 'ADAPTIVEMOBILE', ADAPTIVEMOBILE_ID, userId)
+
+
     return HttpResponse(html)
 
 
@@ -167,7 +177,7 @@ def oauth_authenticated(request):
         raise Exception("Invalid response from Provider.")
     access_token = dict(cgi.parse_qsl(content))
     headers = {'x-li-format':'json'}
-    url = "http://api.linkedin.com/v1/people/~:(id,first-name,last-name,industry)"
+    url = "http://api.linkedin.com/v1/people/~:(id,first-name,last-name)"
     token = oauth.Token(access_token['oauth_token'],
         access_token['oauth_token_secret'])
     client = oauth.Client(consumer,token)
