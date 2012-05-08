@@ -126,8 +126,8 @@ INSTALLED_APPS = (
 )
 
 AUTH_PROFILE_MODULE= 'linkedin.UserProfile'
-LINKEDIN_TOKEN='95kz94r5iq24'
-LINKEDIN_SECRET='4fxieVHKeG1evEsr'
+LINKEDIN_TOKEN='xxxxxxxx'
+LINKEDIN_SECRET='xxxxxxxxxx'
 LOGIN_URL='/login/'
 
 # A sample logging configuration. The only tangible logging
